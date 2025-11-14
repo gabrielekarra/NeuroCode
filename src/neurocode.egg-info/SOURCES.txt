@@ -1,3 +1,4 @@
+LICENSE
 README.md
 pyproject.toml
 src/neurocode/__init__.py
@@ -14,6 +15,7 @@ src/neurocode.egg-info/dependency_links.txt
 src/neurocode.egg-info/entry_points.txt
 src/neurocode.egg-info/requires.txt
 src/neurocode.egg-info/top_level.txt
+tests/test_cli_check.py
 tests/test_cli_commands.py
 tests/test_ir_and_check.py
 tests/test_toon_roundtrip.py

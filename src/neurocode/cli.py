@@ -1,9 +1,8 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Dict, List
 
-from .check import CheckResult, check_file_from_disk
+from .check import check_file_from_disk
 from .explain import explain_file_from_disk
 from .ir_build import build_repository_ir
 from .toon_serialize import repository_ir_to_toon
@@ -89,34 +88,29 @@ def main() -> None:
             sys.exit(1)
 
         if not results:
-            print("[neurocode] no issues found.")
+            print("[neurocode] No issues found.")
             sys.exit(0)
 
-        print(f"[neurocode] structural diagnostics for {file_path}:")
+        results_sorted = sorted(
+            results,
+            key=lambda r: (
+                str(r.file),
+                r.lineno if r.lineno is not None else -1,
+                r.code,
+                r.message,
+            ),
+        )
 
-        grouped: Dict[str, List[CheckResult]] = {}
-        for result in results:
-            module_name = result.module or "<unknown module>"
-            grouped.setdefault(module_name, []).append(result)
-
-        for module_name in sorted(grouped):
-            print(f"\nModule {module_name}:")
-            module_results = sorted(
-                grouped[module_name],
-                key=lambda r: (
-                    r.lineno or 0,
-                    r.function or "",
-                    r.code,
-                    r.message,
-                ),
-            )
-            for res in module_results:
-                location = str(res.file)
-                if res.lineno is not None:
-                    location = f"{location}:{res.lineno}"
-                detail = f"{res.code} {res.message}"
-                print(f"  - {detail} [{location}]")
-        sys.exit(1)
+        exit_code = 0
+        for res in results_sorted:
+            severity = res.severity.upper()
+            location = str(res.file)
+            if res.lineno is not None:
+                location = f"{location}:{res.lineno}"
+            print(f"{severity} {res.code} {location} {res.message}")
+            if severity in {"WARNING", "ERROR"}:
+                exit_code = 1
+        sys.exit(exit_code)
     elif args.command == "patch":
         print("[neurocode] Patch not implemented yet (MVP Phase 5 stub).")
     else:
