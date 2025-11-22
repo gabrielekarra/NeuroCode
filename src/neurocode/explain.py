@@ -5,6 +5,7 @@ from typing import Dict, List
 
 from .ir_model import FunctionIR, ModuleIR, RepositoryIR
 from .toon_parse import load_repository_ir
+from .ir_build import compute_file_hash
 
 
 def _find_repo_root_for_file(file_path: Path) -> Path | None:
@@ -46,7 +47,100 @@ def _find_module_for_file(ir: RepositoryIR, root: Path, file_path: Path) -> Modu
     return None
 
 
-def explain_file_from_disk(file: Path) -> str:
+def _explain_module_json(ir: RepositoryIR, module: ModuleIR, warning: str | None = None) -> str:
+    """Return a JSON string summarizing the module using the IR."""
+
+    import json
+
+    fn_by_id: Dict[int, FunctionIR] = {}
+    for m in ir.modules:
+        for fn in m.functions:
+            fn_by_id[fn.id] = fn
+
+    imports = sorted(
+        {
+            edge.imported_module
+            for edge in ir.module_import_edges
+            if edge.importer_module_id == module.id
+        }
+    )
+
+    def call_edges_for(fn: FunctionIR) -> List[dict]:
+        edges = [
+            edge for edge in ir.call_edges if edge.caller_function_id == fn.id
+        ]
+        edges_sorted = sorted(edges, key=lambda e: e.lineno)
+        items: List[dict] = []
+        for edge in edges_sorted:
+            callee = fn_by_id.get(edge.callee_function_id) if edge.callee_function_id is not None else None
+            items.append(
+                {
+                    "lineno": edge.lineno,
+                    "target": edge.target,
+                    "resolved_callee": callee.qualified_name if callee else None,
+                }
+            )
+        return items
+
+    classes_payload: List[dict] = []
+    for cls in sorted(module.classes, key=lambda c: c.lineno):
+        classes_payload.append(
+            {
+                "name": cls.name,
+                "qualified_name": cls.qualified_name,
+                "lineno": cls.lineno,
+                "base_names": cls.base_names,
+                "methods": [
+                    {
+                        "name": m.name,
+                        "qualified_name": m.qualified_name,
+                        "lineno": m.lineno,
+                        "calls": call_edges_for(m),
+                    }
+                    for m in sorted(cls.methods, key=lambda f: f.lineno)
+                ],
+            }
+        )
+
+    functions_payload: List[dict] = []
+    for fn in sorted(
+        [f for f in module.functions if f.parent_class_id is None],
+        key=lambda f: f.lineno,
+    ):
+        functions_payload.append(
+            {
+                "name": fn.name,
+                "qualified_name": fn.qualified_name,
+                "lineno": fn.lineno,
+                "calls": call_edges_for(fn),
+            }
+        )
+
+    payload = {
+        "module": module.module_name,
+        "path": str(module.path),
+        "imports": imports,
+        "classes": classes_payload,
+        "functions": functions_payload,
+        "warning": warning,
+    }
+    return json.dumps(payload, indent=2)
+
+
+def _staleness_warning(module: ModuleIR, repo_root: Path) -> str | None:
+    if not module.file_hash:
+        return None
+    curr_path = (repo_root / module.path).resolve()
+    try:
+        current_hash = compute_file_hash(curr_path)
+    except OSError:
+        return f"module file missing on disk: {curr_path}"
+    if current_hash != module.file_hash:
+        return f"IR hash for {module.module_name} is stale; file changed on disk"
+    return None
+
+
+def explain_file_from_disk(file: Path, output_format: str = "text") -> str:
     """High-level helper for the CLI: explain a Python file given its path.
 
     - Finds the repository root by walking up until `.neurocode/ir.toon` is found.
@@ -62,10 +156,15 @@ def explain_file_from_disk(file: Path) -> str:
 
     ir_file = repo_root / ".neurocode" / "ir.toon"
     ir = load_repository_ir(ir_file)
-    return explain_file(ir=ir, repo_root=repo_root, file=file)
+    return explain_file(ir=ir, repo_root=repo_root, file=file, output_format=output_format)
 
 
-def explain_file(ir: RepositoryIR, repo_root: Path, file: Path) -> str:
+def explain_file(
+    ir: RepositoryIR,
+    repo_root: Path,
+    file: Path,
+    output_format: str = "text",
+) -> str:
     """Render a human-readable explanation for a file using an in-memory IR.
 
     Output is a plain-text summary including:
@@ -81,7 +180,14 @@ def explain_file(ir: RepositoryIR, repo_root: Path, file: Path) -> str:
             f"{file.resolve()} (did you run `neurocode ir` on the right root?)"
         )
 
+    warning = _staleness_warning(module, repo_root)
+
+    if output_format == "json":
+        return _explain_module_json(ir, module, warning=warning)
+
     lines: List[str] = []
+    if warning:
+        lines.append(f"[neurocode] warning: {warning}")
     lines.append(f"Module: {module.module_name}")
     lines.append(f"Path: {module.path}")
     lines.append("")

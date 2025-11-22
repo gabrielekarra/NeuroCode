@@ -40,6 +40,39 @@ On top of this IR, NeuroCode will support:
 - API upgrades and internal interface evolution
 - intelligent test generation
 
+## Current CLI capabilities
+
+- `neurocode ir <path>` — build IR (`.neurocode/ir.toon`) with per-file hashes and timestamp. `--check` reports staleness without rebuilding.
+- `neurocode explain <file> [--format text|json]` — IR-backed module summary (imports, functions, calls) with staleness warnings.
+- `neurocode check <file> [--format text|json]` — structural diagnostics (unused imports/functions/params, high fan-out, long functions, call cycles). Respects config and staleness warnings.
+- `neurocode patch <file> --fix "..."`
+  - Strategies: `guard`, `todo`, `inject` (NotImplementedError/logging stub).
+  - Targeting (`--target`, `--require-target`), inject options (`--inject-kind`, `--inject-message`), dry-run/diff, stale IR enforcement (`--require-fresh-ir`).
+  - Idempotent via `# neurocode:*` markers; exit code `3` when no change.
+
+## Configuration
+
+NeuroCode reads settings from `.neurocoderc` or `[tool.neurocode]` in `pyproject.toml`:
+
+```toml
+fanout_threshold = 15
+long_function_threshold = 80
+enabled_checks = ["UNUSED_IMPORT", "UNUSED_PARAM", "LONG_FUNCTION", "CALL_CYCLE"]
+severity_overrides = { UNUSED_FUNCTION = "WARNING" }
+```
+
+## Python API
+
+Importable helpers in `neurocode.api`:
+
+- `build_ir(root: Path) -> RepositoryIR`
+- `load_ir(path: Path) -> RepositoryIR`
+- `run_checks(ir, repo_root, file, config=None) -> List[CheckResult]`
+- `explain_file(ir, repo_root, file, output_format="text") -> str`
+- `plan_patch(ir, repo_root, file, fix_description, **kwargs) -> PatchResult`
+
+The CLI uses the same underlying functions; see `docs/ir.md` for the serialized IR schema.
+
 ## High-Level Architecture
 
 ```text

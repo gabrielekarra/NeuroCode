@@ -88,6 +88,7 @@ def repository_ir_from_toon(text: str) -> RepositoryIR:
     current_fields: List[str] = []
     tables: Dict[str, List[Dict[str, str]]] = {}
     in_repo_header = False
+    build_timestamp: str | None = None
 
     for raw_line in lines:
         line = raw_line.rstrip("\n")
@@ -109,6 +110,10 @@ def repository_ir_from_toon(text: str) -> RepositoryIR:
             # Format: "root: /abs/path" (no escaping applied when writing).
             _, value = stripped.split(":", 1)
             root = Path(value.strip())
+            continue
+        if in_repo_header and stripped.startswith("build_timestamp:"):
+            _, value = stripped.split(":", 1)
+            build_timestamp = value.strip()
             continue
 
         # Table header line, e.g. "modules[3]{...}:"
@@ -141,11 +146,13 @@ def repository_ir_from_toon(text: str) -> RepositoryIR:
         module_id = int(row["module_id"])
         module_name = _unescape_value(row["module_name"])
         path_str = _unescape_value(row["path"])
+        file_hash = _unescape_value(row.get("file_hash", ""))
         path = Path(path_str)
         module = ModuleIR(
             id=module_id,
             path=path,
             module_name=module_name,
+            file_hash=file_hash or None,
             imports=[],  # Import details are not serialized; use module_import_edges instead.
             functions=[],
         )
@@ -274,6 +281,7 @@ def repository_ir_from_toon(text: str) -> RepositoryIR:
 
     return RepositoryIR(
         root=root,
+        build_timestamp=build_timestamp,
         modules=modules,
         module_import_edges=module_import_edges,
         call_edges=call_edges,

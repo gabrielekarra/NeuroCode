@@ -24,6 +24,9 @@ def test_toon_roundtrip_preserves_structure(sample_repo: Path, tmp_path: Path) -
     parsed_modules = {(m.module_name, m.path) for m in parsed.modules}
     original_modules = {(m.module_name, m.path) for m in ir.modules}
     assert parsed_modules == original_modules
+    parsed_hashes = {m.file_hash for m in parsed.modules}
+    original_hashes = {m.file_hash for m in ir.modules}
+    assert parsed_hashes == original_hashes
 
     parsed_classes = {
         (module.module_name, cls.name, cls.qualified_name)

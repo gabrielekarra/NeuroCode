@@ -37,6 +37,15 @@ def test_cli_explain_outputs_summary(repo_with_ir: Path, project_root: Path) -> 
     assert "package.mod_a.orchestrator" in result.stdout
 
 
+def test_cli_explain_json_format(repo_with_ir: Path, project_root: Path) -> None:
+    target_file = repo_with_ir / "package" / "mod_a.py"
+    result = _run_cli(project_root, "explain", str(target_file), "--format", "json")
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().startswith("{")
+    assert "package.mod_a" in result.stdout
+
+
 def test_cli_explain_outputs_classes(repo_with_ir: Path, project_root: Path) -> None:
     target_file = repo_with_ir / "package" / "classy.py"
     result = _run_cli(project_root, "explain", str(target_file))
@@ -57,3 +66,25 @@ def test_cli_check_reports_findings(repo_with_ir: Path, project_root: Path) -> N
     assert "UNUSED_FUNCTION" in result.stdout
     assert "HIGH_FANOUT" in result.stdout
     assert "statistics" in result.stdout
+
+
+def test_cli_check_json_format(repo_with_ir: Path, project_root: Path) -> None:
+    target_file = repo_with_ir / "package" / "mod_a.py"
+    result = _run_cli(project_root, "check", str(target_file), "--format", "json")
+
+    assert result.returncode == 1, result.stdout
+    assert result.stdout.strip().startswith("{")
+    assert "UNUSED_IMPORT" in result.stdout
+
+
+def test_cli_ir_check_detects_stale(sample_repo: Path, project_root: Path) -> None:
+    # Build IR first.
+    build_result = _run_cli(project_root, "ir", str(sample_repo))
+    assert build_result.returncode == 0, build_result.stderr
+
+    target_file = sample_repo / "package" / "mod_b.py"
+    target_file.write_text(target_file.read_text(encoding="utf-8") + "\n")
+
+    result = _run_cli(project_root, "ir", str(sample_repo), "--check")
+    assert result.returncode == 1
+    assert "stale" in result.stdout or "missing" in result.stdout

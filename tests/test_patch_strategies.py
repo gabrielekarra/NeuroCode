@@ -19,7 +19,7 @@ def test_todo_strategy_inserts_comment(sample_repo: Path) -> None:
     )
 
     contents = file_path.read_text(encoding="utf-8")
-    comment = "# TODO(neurocode): note for later"
+    comment = "# TODO(neurocode): note for later  # neurocode:todo"
     assert comment in contents
     assert result.inserted_text == comment
 
@@ -228,6 +228,26 @@ def test_inject_strategy_inserts_stub(sample_repo: Path) -> None:
     contents = file_path.read_text(encoding="utf-8")
     assert "NotImplementedError(\"neurocode inject: inject stub\")" in contents
     assert result.summary.startswith("inject stub")
+    assert result.no_change is False
+
+
+def test_inject_logging_strategy_with_custom_message(sample_repo: Path) -> None:
+    file_path = sample_repo / "package" / "mod_b.py"
+    ir = build_repository_ir(sample_repo)
+
+    result = apply_patch(
+        ir=ir,
+        repo_root=sample_repo,
+        file=file_path,
+        fix_description="inject log default",
+        strategy="inject",
+        inject_kind="log",
+        inject_message="custom log",
+        target="run_task",
+    )
+
+    contents = file_path.read_text(encoding="utf-8")
+    assert 'logging.debug("neurocode inject: custom log")' in contents
     assert result.no_change is False
 
 

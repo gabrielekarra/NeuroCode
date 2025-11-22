@@ -37,6 +37,8 @@ def repository_ir_to_toon(ir: RepositoryIR) -> str:
     # Header metadata (YAML-like TOON object section).
     lines.append("repo:")
     lines.append(f"  root: {root}")
+    if ir.build_timestamp:
+        lines.append(f"  build_timestamp: {ir.build_timestamp}")
     lines.append(f"  num_modules: {ir.num_modules}")
     lines.append(f"  num_classes: {ir.num_classes}")
     lines.append(f"  num_functions: {ir.num_functions}")
@@ -46,7 +48,7 @@ def repository_ir_to_toon(ir: RepositoryIR) -> str:
     # Modules table -------------------------------------------------------
 
     lines.append(
-        "modules[{n}]{{module_id,module_name,path,num_functions,num_imports}}:".format(
+        "modules[{n}]{{module_id,module_name,path,file_hash,num_functions,num_imports}}:".format(
             n=ir.num_modules
         )
     )
@@ -57,6 +59,7 @@ def repository_ir_to_toon(ir: RepositoryIR) -> str:
                 str(module.id),
                 _escape_value(module.module_name),
                 _escape_value(path_str),
+                _escape_value(module.file_hash or ""),
                 str(len(module.functions)),
                 str(len(module.imports)),
             ]

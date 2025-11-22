@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import ast
+import hashlib
+import time
 from typing import Dict, List, Set, Tuple
 
 from .ir_model import (
@@ -44,6 +46,13 @@ def module_name_from_path(root: Path, rel_path: Path) -> str:
     if parts and parts[0] == "src":
         parts = parts[1:]
     return ".".join(parts)
+
+
+def compute_file_hash(path: Path) -> str:
+    """Compute a sha256 hash of a file's UTF-8 contents."""
+
+    data = path.read_bytes()
+    return hashlib.sha256(data).hexdigest()
 
 
 @dataclass
@@ -271,10 +280,13 @@ def build_repository_ir(root: Path) -> RepositoryIR:
                 method.parent_class_id = cls.id
                 method.parent_class_qualified_name = cls.qualified_name
 
+        file_hash = hashlib.sha256(source.encode("utf-8")).hexdigest()
+
         module_ir = ModuleIR(
             id=module_id,
             path=rel_path,
             module_name=mod_name,
+            file_hash=file_hash,
             classes=visitor.classes,
             imports=visitor.imports,
             functions=visitor.functions,
@@ -463,8 +475,11 @@ def build_repository_ir(root: Path) -> RepositoryIR:
                     )
                 )
 
+    build_timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
     return RepositoryIR(
         root=root,
+        build_timestamp=build_timestamp,
         modules=modules,
         module_import_edges=module_import_edges,
         call_edges=call_edges,
