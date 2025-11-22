@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Optional, Set
+from typing import Dict, Set
+
 import tomllib
 
 
@@ -18,6 +19,8 @@ class Config:
             "UNUSED_PARAM",
             "LONG_FUNCTION",
             "CALL_CYCLE",
+            "UNUSED_RETURN",
+            "IMPORT_CYCLE",
         }
     )
     severity_overrides: Dict[str, str] = field(default_factory=dict)

@@ -6,9 +6,9 @@ from .check import check_file_from_disk
 from .explain import explain_file_from_disk
 from .ir_build import build_repository_ir, compute_file_hash
 from .patch import apply_patch_from_disk
-from .toon_serialize import repository_ir_to_toon
-from .toon_parse import load_repository_ir
 from .status import status_from_disk
+from .toon_parse import load_repository_ir
+from .toon_serialize import repository_ir_to_toon
 
 
 def main() -> None:
@@ -18,6 +18,13 @@ def main() -> None:
             "NeuroCode – Neural IR engine for structural understanding and "
             "reasoning over codebases."
         ),
+    )
+    from . import __version__
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -72,13 +79,19 @@ def main() -> None:
         "--strategy",
         choices=["guard", "todo", "inject"],
         default="guard",
-        help="Patch strategy: guard inserts a None-check, todo inserts a TODO comment, inject adds a stub/log (default: guard)",
+        help=(
+            "Patch strategy: guard inserts a None-check, todo inserts a TODO "
+            "comment, inject adds a stub/log (default: guard)"
+        ),
     )
     patch_parser.add_argument(
         "--inject-kind",
         choices=["notimplemented", "log"],
         default="notimplemented",
-        help="When using --strategy inject, choose stub type: NotImplementedError or logging.debug (default: notimplemented)",
+        help=(
+            "When using --strategy inject, choose stub type: "
+            "NotImplementedError or logging.debug (default: notimplemented)"
+        ),
     )
     patch_parser.add_argument(
         "--inject-message",
@@ -134,20 +147,6 @@ def main() -> None:
         help="Output format (default: text)",
     )
 
-    status_parser = subparsers.add_parser("status", help="Report IR freshness and config summary")
-    status_parser.add_argument(
-        "path",
-        nargs="?",
-        default=".",
-        help="Path to the repository (default: current directory)",
-    )
-    status_parser.add_argument(
-        "--format",
-        choices=["text", "json"],
-        default="text",
-        help="Output format (default: text)",
-    )
-
     args = parser.parse_args()
 
     if args.command == "ir":
@@ -162,7 +161,12 @@ def main() -> None:
         if args.check:
             ir_file = repo_path / ".neurocode" / "ir.toon"
             if not ir_file.exists():
-                print(f"[neurocode] error: {ir_file} does not exist; run `neurocode ir {repo_path}` first.", file=sys.stderr)
+                print(
+                    "[neurocode] error: {ir_file} does not exist; run `neurocode ir {repo}` first.".format(
+                        ir_file=ir_file, repo=repo_path
+                    ),
+                    file=sys.stderr,
+                )
                 sys.exit(1)
             repo_ir = load_repository_ir(ir_file)
             stale: list[str] = []
@@ -239,7 +243,6 @@ def main() -> None:
             print(f"[neurocode] error: {exc}", file=sys.stderr)
             sys.exit(1)
 
-        target = result.target_function or "file"
         action = "Planned" if args.dry_run else "Applied"
         for warn in result.warnings:
             print(f"[neurocode] warning: {warn}", file=sys.stderr)

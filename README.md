@@ -44,11 +44,11 @@ On top of this IR, NeuroCode will support:
 
 - `neurocode ir <path>` — build IR (`.neurocode/ir.toon`) with per-file hashes and timestamp. `--check` compares hashes to disk and reports staleness without rebuilding.
 - `neurocode explain <file> [--format text|json]` — IR-backed module summary (imports, functions, calls) with staleness warnings.
-- `neurocode check <file> [--format text|json]` — structural diagnostics: unused imports/functions/params, high fan-out, long functions, call cycles. Respects config and staleness warnings.
+- `neurocode check <file> [--format text|json]` — structural diagnostics: unused imports/functions/params, high fan-out, long functions, call cycles, import cycles, unused returns. Respects config and staleness warnings.
 - `neurocode patch <file> --fix "..."`
   - Strategies: `guard`, `todo`, `inject` (NotImplementedError/logging stub).
   - Targeting (`--target`, `--require-target`), inject options (`--inject-kind`, `--inject-message`), dry-run/diff, stale IR enforcement (`--require-fresh-ir`).
-  - Idempotent via `# neurocode:*` markers; exit code `3` when no change. `--format json` emits structured result (status, diff, warnings).
+  - Idempotent via `# neurocode:*` markers; exit code `3` when no change. `--format json` emits structured result (status, diff, warnings, exit_code).
 - `neurocode status [path] [--format text|json]` — summarize IR freshness (hash comparison), build timestamp, and config values in one shot; exit `1` if any module is stale/missing.
 
 ### Examples
@@ -59,27 +59,37 @@ neurocode ir .
 neurocode ir . --check   # warns if any module hash is stale
 ```
 
-Explain a file as JSON:
+Apply a patch with a logging stub:
 ```bash
-neurocode explain src/neurocode/cli.py --format json | jq .
+neurocode patch src/neurocode/cli.py --fix "trace entry" \
+  --strategy inject --inject-kind log --inject-message "enter cli"
 ```
 
-Run checks with custom config:
+Quickstart workflow (sample repo):
+```bash
+# 1) Build IR
+neurocode ir .
+
+# 2) Check freshness + config
+neurocode status . --format json | jq .
+
+# 3) Run checks with JSON output
+neurocode check path/to/file.py --format json --status
+
+# 4) Explain a file
+neurocode explain path/to/file.py --format json | jq .
+
+# 5) Apply a patch (dry-run JSON)
+neurocode patch path/to/file.py --fix "describe fix" --strategy guard --dry-run --format json --show-diff
+```
+
+Custom config example:
 ```toml
 # .neurocoderc or pyproject.toml [tool.neurocode]
 fanout_threshold = 20
 long_function_threshold = 80
 enabled_checks = ["UNUSED_IMPORT", "UNUSED_PARAM", "LONG_FUNCTION"]
 severity_overrides = { UNUSED_FUNCTION = "WARNING" }
-```
-```bash
-neurocode check src/neurocode/check.py --format json
-```
-
-Apply a patch with a logging stub:
-```bash
-neurocode patch src/neurocode/cli.py --fix "trace entry" \
-  --strategy inject --inject-kind log --inject-message "enter cli"
 ```
 
 ## Configuration
@@ -116,6 +126,12 @@ print([r.code for r in results])
 ```
 
 The CLI uses the same underlying functions; see `docs/ir.md` for the serialized IR schema.
+
+## Releases
+
+- Version: `0.1.0` (see `CHANGELOG.md`).
+- Build artifacts locally with `scripts/release.sh` (wheel + sdist in `dist/`).
+- CI: GitHub Actions (`.github/workflows/ci.yml`) runs `ruff check` + `pytest` on push/PR.
 
 ## High-Level Architecture
 
