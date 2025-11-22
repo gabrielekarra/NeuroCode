@@ -79,6 +79,7 @@ class ModuleIR:
     id: int
     path: Path  # path relative to the repository root
     module_name: str
+    file_hash: str | None = None
     classes: List[ClassIR] = field(default_factory=list)
     imports: List[ImportIR] = field(default_factory=list)
     functions: List[FunctionIR] = field(default_factory=list)
@@ -94,6 +95,7 @@ class RepositoryIR:
     """
 
     root: Path
+    build_timestamp: str | None = None
     modules: List[ModuleIR] = field(default_factory=list)
     module_import_edges: List[ModuleImportEdgeIR] = field(default_factory=list)
     call_edges: List[CallEdgeIR] = field(default_factory=list)

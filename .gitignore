@@ -1,0 +1,26 @@
+# Python cache / build
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+.env
+.python-version
+build/
+dist/
+*.egg-info/
+
+# Editor/OS
+.DS_Store
+.idea/
+.vscode/
+
+# NeuroCode artifacts
+.neurocode/
+
+# Coverage / test
+.pytest_cache/
+.coverage*
+coverage.xml
+
+# Logs
+*.log

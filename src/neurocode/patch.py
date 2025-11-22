@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List
 
 from .explain import _find_module_for_file, _find_repo_root_for_file
+from .ir_build import compute_file_hash
 from .ir_model import FunctionIR, ModuleIR, RepositoryIR
 from .toon_parse import load_repository_ir
 
@@ -34,6 +35,8 @@ def apply_patch_from_disk(
     dry_run: bool = False,
     require_fresh_ir: bool = False,
     require_target: bool = False,
+    inject_kind: str = "notimplemented",
+    inject_message: str | None = None,
 ) -> PatchResult:
     """CLI entrypoint: load IR from disk and apply a simple patch.
 
@@ -73,6 +76,8 @@ def apply_patch_from_disk(
         target=target,
         dry_run=dry_run,
         require_target=require_target,
+        inject_kind=inject_kind,
+        inject_message=inject_message,
         warnings=warnings,
     )
 
@@ -86,6 +91,8 @@ def apply_patch(
     target: str | None = None,
     dry_run: bool = False,
     require_target: bool = False,
+    inject_kind: str = "notimplemented",
+    inject_message: str | None = None,
     warnings: list[str] | None = None,
 ) -> PatchResult:
     """Apply a minimal IR-informed patch to ``file`` using an in-memory IR."""
@@ -98,6 +105,17 @@ def apply_patch(
             "No module found in IR for file: "
             f"{file.resolve()} (did you run `neurocode ir` on the right root?)"
         )
+
+    # Staleness warning based on file hash.
+    if module.file_hash:
+        curr_path = (repo_root / module.path).resolve()
+        try:
+            current_hash = compute_file_hash(curr_path)
+        except OSError:
+            warnings.append(f"module file missing on disk: {curr_path}")
+        else:
+            if current_hash != module.file_hash:
+                warnings.append(f"IR hash for {module.module_name} is stale; file changed on disk")
 
     target_fn = _select_target_function(module, target)
     if target and target_fn is None:
@@ -158,6 +176,8 @@ def apply_patch(
             lines=working_lines,
             target_fn=target_fn,
             fix_description=fix_description,
+            kind=inject_kind,
+            message_override=inject_message,
         )
         if inserted:
             summary = f"inject stub near {target_fn.qualified_name}"
@@ -193,11 +213,12 @@ def apply_patch(
             )
 
     # Fallback: insert a TODO at the top of the file if no guard was added.
-    comment = f"# TODO(neurocode): {fix_description}"
+    comment = f"# TODO(neurocode): {fix_description}  # neurocode:todo"
 
     # If the TODO already exists, report and skip.
     for idx, line in enumerate(working_lines):
-        if line.strip() == comment:
+        stripped = line.strip()
+        if stripped == comment or stripped.startswith("# TODO(neurocode):"):
             return PatchResult(
                 file=file,
                 description=fix_description,
@@ -298,6 +319,7 @@ def _insert_guard_clause(
     insert_at = _body_insert_index(func_node, lines, def_line_idx)
 
     guard_lines = [
+        f"{indent}    # neurocode:guard",
         f"{indent}    if {arg_name} is None:",
         f'{indent}        raise ValueError("neurocode guard: {fix_description}")',
     ]
@@ -323,6 +345,9 @@ def _render_diff(old: List[str], new: List[str], file: Path) -> str:
 
 def _has_neurocode_guard(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     for node in ast.walk(func_node):
+        if isinstance(node, ast.Expr) and isinstance(getattr(node, "value", None), ast.Constant):
+            if isinstance(node.value.value, str) and "neurocode guard" in node.value.value:
+                return True
         if not isinstance(node, ast.If):
             continue
         test = node.test
@@ -408,12 +433,32 @@ def _decorator_name(dec: ast.AST) -> str:
     return ""
 
 
+def _has_inject_marker(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    for stmt in func_node.body:
+        if isinstance(stmt, ast.Raise) and isinstance(stmt.exc, ast.Call):
+            if isinstance(stmt.exc.func, ast.Name) and stmt.exc.func.id == "NotImplementedError":
+                args = stmt.exc.args
+                if args and isinstance(args[0], ast.Constant) and isinstance(args[0].value, str):
+                    if "neurocode inject" in args[0].value:
+                        return True
+        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+            call = stmt.value
+            if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name):
+                if call.func.value.id == "logging" and call.func.attr == "debug":
+                    for arg in call.args:
+                        if isinstance(arg, ast.Constant) and isinstance(arg.value, str) and "neurocode inject" in arg.value:
+                            return True
+    return False
+
+
 def _inject_stub(
     lines: List[str],
     target_fn: FunctionIR,
     fix_description: str,
+    kind: str = "notimplemented",
+    message_override: str | None = None,
 ) -> tuple[bool, int, str]:
-    """Inject a stub NotImplementedError at the top of the function."""
+    """Inject a stub (NotImplementedError or logging.debug) at the top of the function."""
 
     source = "\n".join(lines) + "\n"
     try:
@@ -431,12 +476,18 @@ def _inject_stub(
     if func_node is None:
         return False, 0, ""
 
-    if any(isinstance(stmt, ast.Raise) and isinstance(stmt.exc, ast.Call) and isinstance(stmt.exc.func, ast.Name) and stmt.exc.func.id == "NotImplementedError" for stmt in func_node.body):
+    if _has_inject_marker(func_node):
         return True, func_node.lineno + 1, ""
 
     insert_at = _body_insert_index(func_node, lines, target_fn.lineno - 1)
     indent = lines[target_fn.lineno - 1][: len(lines[target_fn.lineno - 1]) - len(lines[target_fn.lineno - 1].lstrip())]
-    stub_line = f'{indent}    raise NotImplementedError("neurocode inject: {fix_description}")'
+    message = message_override or fix_description
+
+    marker = "  # neurocode:inject"
+    if kind == "log":
+        stub_line = f'{indent}    logging.debug("neurocode inject: {message}"){marker}'
+    else:
+        stub_line = f'{indent}    raise NotImplementedError("neurocode inject: {message}"){marker}'
 
     lines.insert(insert_at, stub_line)
     return True, insert_at + 1, stub_line
