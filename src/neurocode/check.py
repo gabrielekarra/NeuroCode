@@ -350,6 +350,8 @@ def _check_unused_returns(
             continue
         if fn.name.startswith("test_"):
             continue
+        if fn.name.startswith("_"):
+            continue
         message = (
             f"Return value of {fn.qualified_name} is never used "
             "(intra-module heuristic)"
