@@ -52,6 +52,30 @@ def test_toon_roundtrip_preserves_structure(sample_repo: Path, tmp_path: Path) -
     }
     assert parsed_class_bases == original_class_bases
 
+    parsed_classes = {
+        (module.module_name, cls.name, cls.qualified_name)
+        for module in parsed.modules
+        for cls in module.classes
+    }
+    original_classes = {
+        (module.module_name, cls.name, cls.qualified_name)
+        for module in ir.modules
+        for cls in module.classes
+    }
+    assert parsed_classes == original_classes
+
+    parsed_class_bases = {
+        (module.module_name, cls.name, tuple(cls.base_names))
+        for module in parsed.modules
+        for cls in module.classes
+    }
+    original_class_bases = {
+        (module.module_name, cls.name, tuple(cls.base_names))
+        for module in ir.modules
+        for cls in module.classes
+    }
+    assert parsed_class_bases == original_class_bases
+
     parsed_imports = {
         (
             module.module_name,
